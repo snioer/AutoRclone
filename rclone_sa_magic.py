@@ -32,7 +32,7 @@ NAME_SCREEN = "wrc"         # default value. Will be replaced by parameters inpu
 
 # parameters for this script
 SIZE_GB_MAX = 700          # if one account has already copied 735GB, switch to next account
-CNT_DEAD_RETRY = 100        # if there is no files be copied for 100 times, switch to next account
+CNT_DEAD_RETRY = 10        # if there is no files be copied for 100 times, switch to next account
 CNT_SA_EXIT = 3            # if continually switch account for 3 times stop script
 
 # change it when u know what are u doing
@@ -291,8 +291,9 @@ def main():
 
         cnt_error = 0
         cnt_dead_retry = 0
-        size_GB_done_before = 0
+        size_file_done_before = 0
         cnt_acc_sucess = 0
+        size_file_done = 0
         while True:
             rc_cmd = 'rclone rc core/stats'
             try:
@@ -323,7 +324,9 @@ def main():
             response_processed = response.decode('utf-8').replace('\0', '')
             response_processed_json = json.loads(response_processed)
             size_GB_done = int(int(response_processed_json['bytes']) * 9.31322e-10)
+            size_file_done = response_processed_json['transfers']
             speed_now = float(int(response_processed_json['speed']) * 9.31322e-10 * 1024)
+
 
             # try:
             #     print(json.loads(response.decode('utf-8')))
@@ -333,12 +336,12 @@ def main():
             print("%s %dGB Done @ %fMB/s" % (dst_label, size_GB_done, speed_now), end="\r")
 
             # continually no ...
-            if size_GB_done - size_GB_done_before == 0:
+            if size_file_done - size_file_done_before == 0:
                 cnt_dead_retry += 1
             else:
                 cnt_dead_retry = 0
 
-            size_GB_done_before = size_GB_done
+            size_file_done_before = size_file_done
 
             # Stop by error (403) info
             if size_GB_done >= SIZE_GB_MAX or cnt_dead_retry >= CNT_DEAD_RETRY:
@@ -373,7 +376,7 @@ def main():
 
                 break
 
-            time.sleep(2)
+            time.sleep(5)
         id = id + 1
 
     print_during(time_start)
