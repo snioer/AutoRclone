@@ -31,8 +31,8 @@ logfile = "log_rclone.txt"  # log file: tail -f log_rclone.txt
 NAME_SCREEN = "wrc"         # default value. Will be replaced by parameters input (-n)
 
 # parameters for this script
-SIZE_GB_MAX = 700          # if one account has already copied 735GB, switch to next account
-CNT_DEAD_RETRY = 10        # if there is no files be copied for 100 times, switch to next account
+SIZE_GB_MAX = 735          # if one account has already copied 735GB, switch to next account
+CNT_DEAD_RETRY = 100        # if there is no files be copied for 100 times, switch to next account
 CNT_SA_EXIT = 3            # if continually switch account for 3 times stop script
 
 # change it when u know what are u doing
@@ -92,7 +92,7 @@ def parse_args():
 
     parser.add_argument('-b', '--begin_sa_id', type=int, default=1,
                         help='the begin id of sa for source')
-    parser.add_argument('-e', '--end_sa_id', type=int, default=400,
+    parser.add_argument('-e', '--end_sa_id', type=int, default=600,
                         help='the end id of sa for destination')
 
     parser.add_argument('-c', '--rclone_config_file', type=str,
@@ -291,16 +291,18 @@ def main():
 
         cnt_error = 0
         cnt_dead_retry = 0
-        size_file_done_before = 0
+        size_bytes_done_before = 0
         cnt_acc_sucess = 0
-        size_file_done = 0
+        already_start = False
         while True:
             rc_cmd = 'rclone rc core/stats'
             try:
                 response = subprocess.check_output(rc_cmd, shell=True)
                 cnt_acc_sucess += 1
                 cnt_error = 0
-                if cnt_acc_sucess >= 9:
+                # if there is a long time waiting, this is will be easily satisfied, so check if it is started using
+                # already_started flag
+                if already_start and cnt_acc_sucess >= 9:
                     cnt_acc_error = 0
                     cnt_acc_sucess = 0
                     if args.test_only: print("total 9 times success. the cnt_acc_error is reset to {}\n".format(cnt_acc_error))
@@ -323,27 +325,34 @@ def main():
 
             response_processed = response.decode('utf-8').replace('\0', '')
             response_processed_json = json.loads(response_processed)
-            size_GB_done = int(int(response_processed_json['bytes']) * 9.31322e-10)
-            size_file_done = response_processed_json['transfers']
+            size_bytes_done = int(response_processed_json['bytes'])
+            size_GB_done = int(size_bytes_done * 9.31322e-10)
             speed_now = float(int(response_processed_json['speed']) * 9.31322e-10 * 1024)
-
+            file_transed = int(response_processed_json['transfers'])
 
             # try:
             #     print(json.loads(response.decode('utf-8')))
             # except:
             #     print("have some encoding problem to print info")
 
-            print("%s %dGB Done @ %fMB/s" % (dst_label, size_GB_done, speed_now), end="\r")
+            print("%s %dGB Done @ %fMB/s @ %d Transfered" % (dst_label, size_GB_done, speed_now, file_transed), end="\r")
 
             # continually no ...
-            if size_file_done - size_file_done_before == 0:
-                cnt_dead_retry += 1
+            if size_bytes_done - size_bytes_done_before == 0:
+                if already_start:
+                    cnt_dead_retry += 1
+                    if args.test_only:
+                        print('\nsize_bytes_done', size_bytes_done)
+                        print('size_bytes_done_before', size_bytes_done_before)
+                        print("No. No size increase after job started.")
             else:
                 cnt_dead_retry = 0
+                if args.test_only: print("\nOk. I think the job has started")
+                already_start = True
 
-            size_file_done_before = size_file_done
+            size_bytes_done_before = size_bytes_done
 
-            # Stop by error (403) info
+            # Stop by error (403, etc) info
             if size_GB_done >= SIZE_GB_MAX or cnt_dead_retry >= CNT_DEAD_RETRY:
 
                 if is_windows():
@@ -376,7 +385,7 @@ def main():
 
                 break
 
-            time.sleep(5)
+            time.sleep(2)
         id = id + 1
 
     print_during(time_start)
